@@ -7,6 +7,7 @@ import {
   Camera, Trash2, Heart, Clock,
 } from 'lucide-react'
 import { useOS } from '../../../lib/store'
+import { supabase } from '../../../lib/supabase'
 import { MODULE_ICONS } from '../../../lib/moduleIcons'
 import { foodEntriesRepo }   from '../../../lib/db/foodEntries'
 import { foodFavoritesRepo } from '../../../lib/db/foodFavorites'
@@ -53,10 +54,20 @@ function minutesSinceLastMeal(todayEntries) {
   return diff >= 0 ? diff : null
 }
 
-// ─── photo stub ───────────────────────────────────────────────────────────────
-// Future: replace with real API call; signature stays the same.
-async function analyzePhotoCalories(_file) {
-  return { status: 'in_development' }
+async function analyzePhotoCalories(file) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) throw new Error('Нужно снова войти в аккаунт.')
+
+  const formData = new FormData()
+  formData.append('image', file)
+  const response = await fetch('/api/nutrition/analyze', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: formData,
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error || 'Не удалось обработать фото.')
+  return payload.estimate
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -260,6 +271,7 @@ function EntryForm({ date, favorites, onAdd, onClose, presetFav }) {
   const [photoFile,  setPhotoFile]  = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [analyzing,  setAnalyzing]  = useState(false)
+  const [photoError, setPhotoError] = useState(null)
   const [showPhoto,  setShowPhoto]  = useState(false)
   const fileRef = useRef(null)
 
@@ -284,22 +296,28 @@ function EntryForm({ date, favorites, onAdd, onClose, presetFav }) {
   const handlePhotoChange = (e) => {
     const file = e.target.files[0]
     if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('Размер фото не должен превышать 5 МБ.')
+      return
+    }
+    if (photoPreview) URL.revokeObjectURL(photoPreview)
     setPhotoFile(file)
     setPhotoPreview(URL.createObjectURL(file))
+    setPhotoError(null)
   }
 
   const handleAnalyze = async () => {
     if (!photoFile) return
     setAnalyzing(true)
-    const result = await analyzePhotoCalories(photoFile)
-    setAnalyzing(false)
-    if (result.status === 'in_development') {
-      // show inline notice — parent will receive this via toast if needed
-      alert('Функция в разработке')
-      return
+    setPhotoError(null)
+    try {
+      const result = await analyzePhotoCalories(photoFile)
+      setFields(f => ({ ...f, name: result.name ?? f.name, calories: String(result.calories ?? f.calories), protein: String(result.protein ?? f.protein), carbs: String(result.carbs ?? f.carbs), fat: String(result.fat ?? f.fat) }))
+    } catch (error) {
+      setPhotoError(error.message)
+    } finally {
+      setAnalyzing(false)
     }
-    // Future: set fields from result
-    setFields(f => ({ ...f, name: result.name ?? f.name, calories: String(result.calories ?? f.calories), protein: String(result.protein ?? f.protein), carbs: String(result.carbs ?? f.carbs), fat: String(result.fat ?? f.fat) }))
   }
 
   return (
@@ -377,7 +395,6 @@ function EntryForm({ date, favorites, onAdd, onClose, presetFav }) {
           >
             <Camera className="w-3.5 h-3.5" />
             📷 Посчитать по фото
-            <span className="ml-1 px-1.5 py-0.5 bg-warning/10 text-warning text-[9px] rounded font-medium">В разработке</span>
           </button>
         </div>
 
@@ -405,6 +422,7 @@ function EntryForm({ date, favorites, onAdd, onClose, presetFav }) {
                 </button>
               )}
             </div>
+            {photoError && <p className="text-xs text-danger">{photoError}</p>}
           </div>
         )}
 

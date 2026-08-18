@@ -30,6 +30,7 @@ import { sumMacros, getMealLabel }  from '../../lib/nutrition-selectors'
 import { fmtDuration }              from '../../lib/sleep-selectors'
 import { getPeriodSummary }         from '../../lib/finance-selectors'
 import { computeProgress }          from '../../lib/goals-selectors'
+import QuickCapture                 from './QuickCapture'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -972,6 +973,8 @@ export default function HomeScreen() {
         <p className="text-text-6 text-sm capitalize">{today}</p>
         <h1 className="text-2xl font-bold text-text mt-1">Сегодня</h1>
       </div>
+
+      <QuickCapture />
 
       {/* Empty state */}
       {activeModules.length === 0 ? (

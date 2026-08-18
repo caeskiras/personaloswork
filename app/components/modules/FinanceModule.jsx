@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import EmptyState from '../EmptyState'
 import {
   Plus, X, AlertCircle, ChevronLeft, ChevronRight,
@@ -20,7 +20,9 @@ import {
   getBudgetUsage,
   sortTransactions,
   groupTransactionsByDate,
+  buildImportHash,
 } from '../../../lib/finance-selectors'
+import { parseStatementCsv, suggestCategoryId } from '../../../lib/statement-import'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -33,17 +35,6 @@ const WEEKDAYS_RU = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс']
 
 const CAT_COLORS = ['#f59e0b','#ef4444','#22c55e','#3b82f6','#8b5cf6','#ec4899','#06b6d4','#10b981','#6c63ff','#f97316']
 const CAT_EMOJIS = ['🍕','🚗','🏠','🎉','💊','💰','📦','🛒','✈️','📚','👕','💡','🎵','🍺','💻','🐾']
-
-// ─── import stub ──────────────────────────────────────────────────────────────
-// Future: replace with real bank statement parser.
-// Points of extension:
-//   (a) Anti-duplicate: compute buildImportHash(date, amount, description) per row,
-//       skip if transaction with that import_hash already exists.
-//   (b) Auto-categorisation: match description keywords to category names/ids.
-//   (c) Tag as 'essential'/'optional' for savings advice UI.
-async function parseStatement(_file) {
-  return { status: 'in_development' }
-}
 
 function localStr(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
@@ -731,10 +722,62 @@ function LoadingSkeleton() {
   )
 }
 
+function ImportPreview({ preview, importing, onCancel, onConfirm }) {
+  const visibleRows = preview.rows.slice(0, 5)
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="w-full max-w-lg bg-card border border-border-2 rounded-xl shadow-xl p-5 animate-fade-in">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text">Импорт выписки</h2>
+            <p className="text-sm text-subtle mt-1">
+              Готово к добавлению: {preview.rows.length}. Дубликаты: {preview.duplicates}.
+            </p>
+          </div>
+          <button type="button" onClick={onCancel} disabled={importing} className="p-1 text-subtle hover:text-text transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="border border-border-2 rounded-lg overflow-hidden mb-3">
+          {visibleRows.map((row, index) => (
+            <div key={`${row.date}-${row.note}-${index}`} className="flex items-center gap-3 px-3 py-2 border-b border-border last:border-0 text-sm">
+              <span className="text-subtle shrink-0">{fmtDate(row.date)}</span>
+              <span className="text-text flex-1 truncate">{row.note}</span>
+              <span className={row.type === 'income' ? 'text-[#22c55e]' : 'text-[#ef4444]'}>
+                {row.type === 'income' ? '+' : '-'}{fmtMoney(row.amount)} ₽
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {(preview.skipped > 0 || preview.rows.length > visibleRows.length) && (
+          <p className="text-xs text-subtle mb-4">
+            {preview.rows.length > visibleRows.length ? `Показаны первые ${visibleRows.length} операций. ` : ''}
+            {preview.skipped > 0 ? `Строк пропущено: ${preview.skipped}.` : ''}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel} disabled={importing} className="px-4 py-2 text-sm text-subtle hover:text-text transition-colors">
+            Отмена
+          </button>
+          <button type="button" onClick={onConfirm} disabled={importing || !preview.rows.length}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-black bg-[#f59e0b] hover:bg-[#fbbf24] disabled:opacity-50 transition-colors">
+            <Check className="w-4 h-4" />
+            {importing ? 'Импортируем...' : `Добавить ${preview.rows.length}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── FinanceModule (main) ─────────────────────────────────────────────────────
 
 export default function FinanceModule() {
   const { userId } = useOS()
+  const fileInputRef = useRef(null)
 
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
@@ -746,6 +789,8 @@ export default function FinanceModule() {
   const [showForm,     setShowForm]     = useState(false)
   const [statPeriod,   setStatPeriod]   = useState('month')
   const [activeTab,    setActiveTab]    = useState('transactions')
+  const [importPreview, setImportPreview] = useState(null)
+  const [importing,     setImporting]     = useState(false)
 
   const showToast = useCallback((msg) => setToast(msg), [])
 
@@ -808,12 +853,50 @@ export default function FinanceModule() {
     }
   }, [transactions, showToast])
 
-  // ── Statement import stub ─────────────────────────────────────────────────────
+  // ── Statement import ──────────────────────────────────────────────────────────
 
-  const handleImport = async () => {
-    const result = await parseStatement(null)
-    if (result.status === 'in_development') {
-      showToast('📄 Импорт выписки — функция в разработке')
+  const handleImportFile = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    try {
+      const parsed = await parseStatementCsv(file)
+      const seenHashes = new Set(transactions.map(tx => tx.importHash).filter(Boolean))
+      let duplicates = 0
+      const rows = []
+      for (const transaction of parsed.rows) {
+        const importHash = buildImportHash(transaction.date, transaction.amount, transaction.note)
+        if (seenHashes.has(importHash)) {
+          duplicates += 1
+          continue
+        }
+        seenHashes.add(importHash)
+        rows.push({
+          ...transaction,
+          categoryId: suggestCategoryId(categories, transaction),
+          importHash,
+        })
+      }
+      setImportPreview({ rows, duplicates, skipped: parsed.skipped })
+    } catch (importError) {
+      showToast(importError.message || 'Не удалось прочитать выписку')
+    }
+  }
+
+  const confirmImport = async () => {
+    if (!userId || !importPreview?.rows.length) return
+    setImporting(true)
+    try {
+      const saved = await transactionsRepo.createMany(userId, importPreview.rows)
+      setTransactions(prev => sortTransactions([...saved, ...prev]))
+      showToast(`Импортировано операций: ${saved.length}`)
+      setImportPreview(null)
+    } catch (importError) {
+      showToast('Не удалось завершить импорт. Повторите попытку.')
+      console.error(importError)
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -841,6 +924,14 @@ export default function FinanceModule() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto animate-fade-in">
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
+      {importPreview && (
+        <ImportPreview
+          preview={importPreview}
+          importing={importing}
+          onCancel={() => setImportPreview(null)}
+          onConfirm={confirmImport}
+        />
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -858,14 +949,26 @@ export default function FinanceModule() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowForm(s => !s)}
-          className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl transition-colors"
-          style={{ backgroundColor: ACCENT + '20', color: ACCENT }}
-        >
-          <Plus className="w-4 h-4" />
-          Добавить
-        </button>
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={handleImportFile} />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-xl border border-border-2 text-subtle hover:text-text hover:border-[#f59e0b]/50 transition-colors"
+            title="Импортировать выписку CSV"
+          >
+            <Upload className="w-4 h-4" />
+            <span className="hidden sm:inline">Импорт CSV</span>
+          </button>
+          <button
+            onClick={() => setShowForm(s => !s)}
+            className="flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+            style={{ backgroundColor: ACCENT + '20', color: ACCENT }}
+          >
+            <Plus className="w-4 h-4" />
+            Добавить
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

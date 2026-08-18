@@ -16,7 +16,8 @@ export default function ForgotPasswordScreen() {
     setError('')
     setSubmitting(true)
     try {
-      const redirectTo = `${window.location.origin}/auth/reset`
+      const appUrl = window.__PUBLIC_ENV__?.NEXT_PUBLIC_APP_URL || window.location.origin
+      const redirectTo = `${appUrl.replace(/\/$/, '')}/auth/reset`
       const { error: authError } = await resetPasswordForEmail(email.trim(), redirectTo)
       if (authError) { setError(authError.message); return }
       setSent(true)

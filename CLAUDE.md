@@ -99,9 +99,9 @@
 ## Деплой / окружение
 - Деплой на Railway: Deploy from GitHub repo, ветка main, авто-деплой по push.
 - Build: `npm run build`. Start: `next start -p $PORT` — Railway передаёт порт через $PORT, порт не хардкодить.
-- ENV (в Railway): NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
+- ENV (в Railway): NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 - Node: >=20 (зафиксировано в .nvmrc и engines в package.json).
-- Анонимный Supabase-клиент (lib/supabase.js) инициализировать лениво. Для Railway public env прокидываются в браузер через runtime endpoint `/api/public-env`, потому что NEXT_PUBLIC_* могут отсутствовать на build-time. Runtime env всё равно обязательны для работы приложения.
+- Анонимный Supabase-клиент (lib/supabase.js) инициализировать лениво. Для Railway public env прокидываются в браузер через runtime endpoint `/api/public-env`, потому что NEXT_PUBLIC_* могут отсутствовать на build-time. Runtime env всё равно обязательны для работы приложения. `NEXT_PUBLIC_APP_URL` используется для auth redirect (`/auth/reset`), чтобы письма Supabase не уезжали на старый/непривязанный домен.
 - supabaseAdmin инициализировать лениво, чтобы билд не падал без env.
 
 ## Мобильные соглашения (< md = < 768px)

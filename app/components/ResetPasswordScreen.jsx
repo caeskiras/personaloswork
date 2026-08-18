@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 
@@ -14,22 +15,67 @@ export default function ResetPasswordScreen() {
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]      = useState('')
   const [done,       setDone]       = useState(false)
+  const [checking,   setChecking]   = useState(true)
+  const [linkError,  setLinkError]  = useState('')
   // True when Supabase has restored the recovery session from the email link
   const [ready,      setReady]      = useState(false)
 
   useEffect(() => {
+    const url = new URL(window.location.href)
+    const hash = new URLSearchParams(url.hash.slice(1))
+    const linkErrorDescription = hash.get('error_description') || url.searchParams.get('error_description')
+    const hasRecoveryToken = Boolean(
+      url.searchParams.get('code') ||
+      (hash.get('access_token') && hash.get('type') === 'recovery')
+    )
+
+    if (linkErrorDescription) {
+      setLinkError(decodeURIComponent(linkErrorDescription.replace(/\+/g, ' ')))
+      setChecking(false)
+      return undefined
+    }
+
+    if (!hasRecoveryToken) {
+      setLinkError('Эта страница открывается только по ссылке из письма для сброса пароля.')
+      setChecking(false)
+      return undefined
+    }
+
+    let isActive = true
+    let timeoutId
+
+    const markReady = () => {
+      if (!isActive) return
+      setReady(true)
+      setChecking(false)
+      clearTimeout(timeoutId)
+    }
+
     // Supabase fires PASSWORD_RECOVERY when the page loads with the recovery token in the URL hash.
     // The client parses the hash automatically and fires onAuthStateChange.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setReady(true)
+      if (event === 'PASSWORD_RECOVERY') markReady()
       // If already signed in (e.g. navigated here from settings), allow too
-      if (event === 'SIGNED_IN') setReady(true)
+      if (event === 'SIGNED_IN') markReady()
     })
     // Also check current session — user might already be authenticated via recovery link
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) setReady(true)
+      if (session) markReady()
+    }).catch(() => {
+      if (isActive) setLinkError('Не удалось проверить ссылку. Попробуйте запросить новую.')
     })
-    return () => subscription.unsubscribe()
+
+    timeoutId = setTimeout(() => {
+      if (!isActive) return
+      setLinkError('Ссылка недействительна или срок её действия истёк. Запросите новую ссылку.')
+      setChecking(false)
+    }, 10000)
+
+    return () => {
+      isActive = false
+      clearTimeout(timeoutId)
+      subscription.unsubscribe()
+    }
   }, [])
 
   const submit = async () => {
@@ -68,7 +114,17 @@ export default function ResetPasswordScreen() {
               <p className="text-subtle text-sm">Перенаправляем в приложение…</p>
             </div>
           </div>
-        ) : !ready ? (
+        ) : linkError ? (
+          <div className="flex flex-col items-center gap-5 text-center">
+            <div>
+              <p className="text-text font-semibold mb-2">Не удалось открыть сброс пароля</p>
+              <p className="text-subtle text-sm">{linkError}</p>
+            </div>
+            <Link href="/auth/forgot" className="text-sm text-accent hover:text-accent-light transition-colors">
+              Запросить новую ссылку
+            </Link>
+          </div>
+        ) : checking && !ready ? (
           <div className="flex flex-col items-center gap-4 text-center">
             <div className="w-5 h-5 rounded-full border-2 border-accent border-t-transparent animate-spin" />
             <p className="text-subtle text-sm">Проверяем ссылку сброса…</p>

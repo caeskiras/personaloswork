@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import EmptyState from '../EmptyState'
 import {
   ChevronDown, ChevronRight, ChevronLeft, Check, X, FileText,
-  AlertCircle, Plus, Repeat, List, CalendarDays,
+  AlertCircle, Plus, Repeat, List, CalendarDays, Bell, BellRing,
 } from 'lucide-react'
 import { useOS } from '../../../lib/store'
 import { MODULE_ICONS } from '../../../lib/moduleIcons'
@@ -45,6 +45,10 @@ const SECTIONS = [
   { key: 'noDate',   label: 'Без срока',    danger: false },
   { key: 'done',     label: 'Завершённые',  danger: false },
 ]
+
+function reminderKey(userId, suffix) {
+  return `personal-os:tasks-reminders:${userId}:${suffix}`
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -1007,6 +1011,7 @@ export default function TasksModule() {
   const [projects,       setProjects]       = useState([])
   const [loading,        setLoading]        = useState(true)
   const [toast,          setToast]          = useState(null)
+  const [remindersEnabled, setRemindersEnabled] = useState(false)
 
   // ── edit state ──
   const [editingId,         setEditingId]         = useState(null)
@@ -1068,6 +1073,14 @@ export default function TasksModule() {
 
   const showToast = (msg) => setToast(msg)
 
+  useEffect(() => {
+    if (!userId || typeof window === 'undefined' || !('Notification' in window)) return
+    setRemindersEnabled(
+      window.Notification.permission === 'granted' &&
+      window.localStorage.getItem(reminderKey(userId, 'enabled')) === 'true'
+    )
+  }, [userId])
+
   // ── derived ──────────────────────────────────────────────────────────────────
 
   const allTags = useMemo(() => {
@@ -1100,6 +1113,50 @@ export default function TasksModule() {
   })
 
   const totalActive = tasks.filter(t => t.status !== 'done').length
+
+  useEffect(() => {
+    if (!userId || !remindersEnabled || typeof window === 'undefined' || window.Notification?.permission !== 'granted') return
+    const today = getTodayStr()
+    const dueTasks = tasks.filter(task => task.status !== 'done' && task.due_date && task.due_date <= today)
+    if (!dueTasks.length) return
+
+    const sentKey = reminderKey(userId, `sent:${today}`)
+    if (window.localStorage.getItem(sentKey)) return
+
+    const overdueCount = dueTasks.filter(task => task.due_date < today).length
+    const todayCount = dueTasks.length - overdueCount
+    const parts = []
+    if (todayCount) parts.push(`на сегодня: ${todayCount}`)
+    if (overdueCount) parts.push(`просрочено: ${overdueCount}`)
+    new window.Notification('Задачи ждут внимания', {
+      body: parts.join(', '),
+      tag: `personal-os-tasks-${today}`,
+    })
+    window.localStorage.setItem(sentKey, 'true')
+  }, [tasks, userId, remindersEnabled])
+
+  const toggleReminders = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      showToast('Этот браузер не поддерживает уведомления')
+      return
+    }
+
+    if (remindersEnabled) {
+      setRemindersEnabled(false)
+      window.localStorage.removeItem(reminderKey(userId, 'enabled'))
+      showToast('Напоминания выключены')
+      return
+    }
+
+    const permission = await window.Notification.requestPermission()
+    if (permission !== 'granted') {
+      showToast('Разрешите уведомления в браузере, чтобы включить напоминания')
+      return
+    }
+    window.localStorage.setItem(reminderKey(userId, 'enabled'), 'true')
+    setRemindersEnabled(true)
+    showToast('Напоминания включены')
+  }
 
   // ── task CRUD ────────────────────────────────────────────────────────────────
 
@@ -1400,15 +1457,30 @@ export default function TasksModule() {
       {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: MODULE_ICONS.tasks.color + '20' }}>
-          <MODULE_ICONS.tasks.Icon size={20} style={{ color: MODULE_ICONS.tasks.color }} />
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: MODULE_ICONS.tasks.color + '20' }}>
+            <MODULE_ICONS.tasks.Icon size={20} style={{ color: MODULE_ICONS.tasks.color }} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-text">Задачи</h1>
+            <p className="text-subtle text-sm">{totalActive} активных</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-text">Задачи</h1>
-          <p className="text-subtle text-sm">{totalActive} активных</p>
-        </div>
+        <button
+          type="button"
+          onClick={toggleReminders}
+          className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors ${
+            remindersEnabled
+              ? 'border-accent/50 bg-accent/15 text-accent'
+              : 'border-border text-subtle hover:text-text hover:border-accent/40'
+          }`}
+          title={remindersEnabled ? 'Выключить напоминания' : 'Включить напоминания'}
+        >
+          {remindersEnabled ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+          <span className="hidden sm:inline">Напоминания</span>
+        </button>
       </div>
 
       {/* View switcher */}

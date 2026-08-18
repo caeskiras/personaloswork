@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import EmptyState from '../EmptyState'
 import {
   Plus, X, AlertCircle, ChevronLeft, ChevronRight,
-  Trash2, Edit2, Upload, Check,
+  Trash2, Edit2, Upload, Check, Wand2,
 } from 'lucide-react'
 import { useOS }                from '../../../lib/store'
 import { MODULE_ICONS }         from '../../../lib/moduleIcons'
@@ -791,6 +791,7 @@ export default function FinanceModule() {
   const [activeTab,    setActiveTab]    = useState('transactions')
   const [importPreview, setImportPreview] = useState(null)
   const [importing,     setImporting]     = useState(false)
+  const [recategorizing, setRecategorizing] = useState(false)
 
   const showToast = useCallback((msg) => setToast(msg), [])
 
@@ -900,6 +901,42 @@ export default function FinanceModule() {
     }
   }
 
+  const recategorizeExisting = async () => {
+    const otherCategoryId = categories.find(category => category.name === 'Прочее')?.id
+    const updates = transactions
+      .map(transaction => ({ transaction, categoryId: suggestCategoryId(categories, transaction) }))
+      .filter(({ transaction, categoryId }) =>
+        categoryId &&
+        categoryId !== otherCategoryId &&
+        categoryId !== transaction.categoryId &&
+        (!transaction.categoryId || transaction.categoryId === otherCategoryId)
+      )
+
+    if (!updates.length) {
+      showToast('Подходящих операций для автокатегоризации не найдено')
+      return
+    }
+
+    setRecategorizing(true)
+    try {
+      const results = await Promise.allSettled(
+        updates.map(({ transaction, categoryId }) => transactionsRepo.update(transaction.id, { categoryId }))
+      )
+      const savedById = new Map(
+        results.filter(result => result.status === 'fulfilled').map(result => [result.value.id, result.value])
+      )
+      setTransactions(prev => prev.map(transaction => savedById.get(transaction.id) ?? transaction))
+      const failed = updates.length - savedById.size
+      showToast(
+        failed
+          ? `Распределено: ${savedById.size}. Не удалось обновить: ${failed}.`
+          : `Автоматически распределено операций: ${savedById.size}`
+      )
+    } finally {
+      setRecategorizing(false)
+    }
+  }
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const grouped = useMemo(() => groupTransactionsByDate(transactions), [transactions])
@@ -949,8 +986,18 @@ export default function FinanceModule() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <input ref={fileInputRef} type="file" accept=".csv,.txt,.pdf,text/csv,text/plain,application/pdf" className="hidden" onChange={handleImportFile} />
+          <button
+            type="button"
+            onClick={recategorizeExisting}
+            disabled={recategorizing || !transactions.length}
+            className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-xl border border-border-2 text-subtle hover:text-text hover:border-[#f59e0b]/50 disabled:opacity-50 transition-colors"
+            title="Распределить текущие операции по категориям"
+          >
+            <Wand2 className="w-4 h-4" />
+            <span className="hidden sm:inline">{recategorizing ? 'Распределяем...' : 'Разнести'}</span>
+          </button>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

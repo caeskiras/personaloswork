@@ -22,7 +22,7 @@ import {
   groupTransactionsByDate,
   buildImportHash,
 } from '../../../lib/finance-selectors'
-import { parseStatementCsv, suggestCategoryId } from '../../../lib/statement-import'
+import { parseStatementFile, suggestCategoryId } from '../../../lib/statement-import'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -861,7 +861,7 @@ export default function FinanceModule() {
     if (!file) return
 
     try {
-      const parsed = await parseStatementCsv(file)
+      const parsed = await parseStatementFile(file)
       const seenHashes = new Set(transactions.map(tx => tx.importHash).filter(Boolean))
       let duplicates = 0
       const rows = []
@@ -950,15 +950,15 @@ export default function FinanceModule() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <input ref={fileInputRef} type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={handleImportFile} />
+          <input ref={fileInputRef} type="file" accept=".csv,.txt,.pdf,text/csv,text/plain,application/pdf" className="hidden" onChange={handleImportFile} />
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 text-sm font-medium px-3 py-2 rounded-xl border border-border-2 text-subtle hover:text-text hover:border-[#f59e0b]/50 transition-colors"
-            title="Импортировать выписку CSV"
+            title="Импортировать выписку CSV или PDF Т-Банка"
           >
             <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Импорт CSV</span>
+            <span className="hidden sm:inline">Импорт</span>
           </button>
           <button
             onClick={() => setShowForm(s => !s)}

@@ -43,6 +43,8 @@ export default function ResetPasswordScreen() {
       setDone(true)
       // Redirect to /home after 2s
       setTimeout(() => router.replace('/home'), 2000)
+    } catch (err) {
+      setError(err?.message ?? 'Не удалось сохранить пароль')
     } finally {
       setSubmitting(false)
     }

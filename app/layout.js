@@ -25,6 +25,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ru" data-theme="dark" suppressHydrationWarning>
       <head>
+        <script src="/api/public-env" />
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

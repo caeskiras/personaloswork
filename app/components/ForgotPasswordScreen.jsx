@@ -20,6 +20,8 @@ export default function ForgotPasswordScreen() {
       const { error: authError } = await resetPasswordForEmail(email.trim(), redirectTo)
       if (authError) { setError(authError.message); return }
       setSent(true)
+    } catch (err) {
+      setError(err?.message ?? 'Не удалось отправить письмо')
     } finally {
       setSubmitting(false)
     }

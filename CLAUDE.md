@@ -101,7 +101,7 @@
 - Build: `npm run build`. Start: `next start -p $PORT` — Railway передаёт порт через $PORT, порт не хардкодить.
 - ENV (в Railway): NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY.
 - Node: >=20 (зафиксировано в .nvmrc и engines в package.json).
-- Анонимный Supabase-клиент (lib/supabase.js) инициализировать лениво, чтобы Next prerender на Railway не падал без build-time env. Runtime env всё равно обязательны для работы приложения.
+- Анонимный Supabase-клиент (lib/supabase.js) инициализировать лениво. Для Railway public env прокидываются в браузер через runtime endpoint `/api/public-env`, потому что NEXT_PUBLIC_* могут отсутствовать на build-time. Runtime env всё равно обязательны для работы приложения.
 - supabaseAdmin инициализировать лениво, чтобы билд не падал без env.
 
 ## Мобильные соглашения (< md = < 768px)
@@ -129,7 +129,7 @@
 - Не отправлять не-uuid в *_id колонки (иначе 22P02). Если значения нет — слать null.
 - Новые таблицы без RLS-политик = пустые ответы под анонимной сессией. Всегда добавлять политики.
 - getSession() без .catch() = вечный спиннер при сетевом сбое. Всегда добавлять .catch(() => setSession(null)).finally(() => setLoading(false)).
-- `createClient(process.env.NEXT_PUBLIC_...)` на верхнем уровне lib/supabase.js ломает Railway/Next prerender ошибкой `supabaseUrl is required`, если env доступны только в runtime. Держать lazy Proxy как в supabaseAdmin.
+- `createClient(process.env.NEXT_PUBLIC_...)` на верхнем уровне lib/supabase.js ломает Railway/Next prerender ошибкой `supabaseUrl is required`, если env доступны только в runtime. Держать lazy Proxy как в supabaseAdmin, а браузерные public env брать из `globalThis.__PUBLIC_ENV__`, который выставляет `/api/public-env`.
 
 ## Рабочий протокол
 - Одно логическое изменение = один коммит = один push. Точечные правки, не переписывать всё.

@@ -1,9 +1,10 @@
 'use client'
 
-import { useOS } from '../../lib/store'
 import { useAuth } from '../../lib/auth'
+import { useOS } from '../../lib/store'
 import { useRouter } from 'next/navigation'
 import ThemeSwitcher from './ThemeSwitcher'
+import DataResetControl from './DataResetControl'
 
 export default function SettingsScreen() {
   const { resetOS } = useOS()
@@ -14,13 +15,6 @@ export default function SettingsScreen() {
     resetOS()
     await signOut()
     router.replace('/auth')
-  }
-
-  const handleReset = () => {
-    if (confirm('Сбросить систему? Все данные будут удалены.')) {
-      resetOS()
-      router.push('/')
-    }
   }
 
   return (
@@ -66,16 +60,7 @@ export default function SettingsScreen() {
             <span className="text-xs text-subtle">→</span>
           </button>
 
-          <button
-            onClick={handleReset}
-            className="w-full flex items-center justify-between px-5 py-4 text-danger hover:bg-danger/5 transition-colors text-left"
-          >
-            <div>
-              <p className="text-sm font-medium">Сбросить систему</p>
-              <p className="text-xs text-subtle mt-0.5">Удалить все данные и начать заново</p>
-            </div>
-            <span className="text-xs">→</span>
-          </button>
+          <DataResetControl scope="all" settings onDone={() => router.replace('/home')} />
         </div>
       </div>
     </div>

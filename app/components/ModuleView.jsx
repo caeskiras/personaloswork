@@ -15,6 +15,7 @@ import FocusModule     from './modules/FocusModule'
 import ProjectsModule  from './modules/ProjectsModule'
 import GoalsModule     from './modules/GoalsModule'
 import GenericModule   from './modules/GenericModule'
+import DataResetControl from './DataResetControl'
 
 const MODULE_COMPONENTS = {
   tasks:     TasksModule,
@@ -72,5 +73,8 @@ export default function ModuleView({ moduleId }) {
   }
 
   const Component = MODULE_COMPONENTS[moduleId] || GenericModule
-  return <Component module={mod} />
+  return <>
+    <Component module={mod} />
+    <DataResetControl scope={moduleId} onDone={() => window.location.reload()} />
+  </>
 }

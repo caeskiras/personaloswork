@@ -137,7 +137,7 @@ function EventChip({ event, onClick }) {
 
 // ─── Month view ───────────────────────────────────────────────────────────────
 
-const MAX_CHIPS = 3
+const MAX_CHIPS = 4
 
 function MonthView({ current, dayMap, today, onDayClick, onEventClick }) {
   const year  = current.getFullYear()

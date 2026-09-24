@@ -137,11 +137,11 @@ function EventChip({ event, onClick }) {
   )
 }
 
-function BusyOverview({ events, compact = false }) {
+function BusyOverview({ events }) {
   const summary = buildBusySummary(events)
   if (summary.ranges.length === 0) {
     return (
-      <div className="flex items-center gap-1 px-1.5 py-1 rounded bg-success/10 text-success text-[10px] leading-tight">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-success/10 text-success text-[10px] leading-tight">
         <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
         <span>Свободен весь день</span>
       </div>
@@ -150,23 +150,34 @@ function BusyOverview({ events, compact = false }) {
 
   const first = formatCalendarTime(summary.firstStart)
   const last = formatCalendarTime(summary.lastEnd)
-  const gapText = summary.freeWindows
-    .map(gap => `${formatCalendarTime(gap.start)}–${formatCalendarTime(gap.end)}`)
-    .join(' · ')
+  const freeSlots = [
+    { key: 'before', label: `до ${first}` },
+    ...summary.freeWindows.map(gap => ({
+      key: `${gap.start}-${gap.end}`,
+      label: `${formatCalendarTime(gap.start)}–${formatCalendarTime(gap.end)}`,
+    })),
+    { key: 'after', label: `после ${last}` },
+  ]
 
   return (
-    <div className="flex flex-col gap-0.5 min-w-0">
-      <div className="flex items-center gap-1 px-1.5 py-1 rounded bg-accent/15 text-accent text-[10px] leading-tight">
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-accent/15 text-accent text-[10px] leading-tight">
         <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-        <span className="truncate">Занят {first}–{last}</span>
+        <span className="font-semibold whitespace-nowrap">Занят {first}–{last}</span>
       </div>
-      <div className="px-1.5 text-[10px] leading-tight text-success truncate">Свободен до {first}</div>
-      {summary.freeWindows.length > 0 && (
-        <div className="px-1.5 text-[10px] leading-tight text-success truncate" title={gapText}>
-          {compact ? 'Окна: ' : 'Свободные окна: '}{gapText}
+      <div className="px-0.5">
+        <div className="text-[9px] uppercase tracking-wide text-subtle mb-1">Свободно</div>
+        <div className="flex flex-wrap gap-1">
+          {freeSlots.map(slot => (
+            <span
+              key={slot.key}
+              className="px-1.5 py-1 rounded-md border border-success/20 bg-success/10 text-success text-[9px] leading-none whitespace-nowrap"
+            >
+              {slot.label}
+            </span>
+          ))}
         </div>
-      )}
-      <div className="px-1.5 text-[10px] leading-tight text-success truncate">Свободен после {last}</div>
+      </div>
     </div>
   )
 }
@@ -192,7 +203,7 @@ function MonthView({ current, dayMap, today, displayMode, onDayClick, onEventCli
       {/* Day grid */}
       <div className="grid grid-cols-7 gap-1">
         {cells.map((date, i) => {
-          if (!date) return <div key={`pad-${i}`} className="min-h-[88px]" />
+          if (!date) return <div key={`pad-${i}`} className={displayMode === 'busy' ? 'min-h-[128px]' : 'min-h-[88px]'} />
 
           const ds      = localStr(date)
           const events  = dayMap.get(ds) ?? []
@@ -204,7 +215,7 @@ function MonthView({ current, dayMap, today, displayMode, onDayClick, onEventCli
             <div
               key={ds}
               onClick={() => onDayClick(date)}
-              className={`min-h-[88px] p-1.5 rounded-xl border cursor-pointer transition-all flex flex-col gap-0.5 select-none ${
+              className={`${displayMode === 'busy' ? 'min-h-[128px]' : 'min-h-[88px]'} p-1.5 rounded-xl border cursor-pointer transition-all flex flex-col gap-0.5 select-none ${
                 isToday
                   ? 'border-accent/50 bg-accent/5 hover:bg-accent/10'
                   : 'border-border hover:border-muted hover:bg-surface/60'
@@ -216,7 +227,7 @@ function MonthView({ current, dayMap, today, displayMode, onDayClick, onEventCli
                 {date.getDate()}
               </span>
               {displayMode === 'busy' ? (
-                <BusyOverview events={events} compact />
+                <BusyOverview events={events} />
               ) : (
                 <>
                   {shown.map(ev => (

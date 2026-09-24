@@ -26,6 +26,8 @@ import {
   normalizeFinanceEvents,
   normalizeMeetingEvents,
   buildDayMap,
+  buildBusySummary,
+  formatCalendarTime,
   MEETING_COLOR,
 } from '../../../lib/calendar-selectors'
 import {
@@ -135,11 +137,45 @@ function EventChip({ event, onClick }) {
   )
 }
 
+function BusyOverview({ events, compact = false }) {
+  const summary = buildBusySummary(events)
+  if (summary.ranges.length === 0) {
+    return (
+      <div className="flex items-center gap-1 px-1.5 py-1 rounded bg-success/10 text-success text-[10px] leading-tight">
+        <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
+        <span>Свободен весь день</span>
+      </div>
+    )
+  }
+
+  const first = formatCalendarTime(summary.firstStart)
+  const last = formatCalendarTime(summary.lastEnd)
+  const gapText = summary.freeWindows
+    .map(gap => `${formatCalendarTime(gap.start)}–${formatCalendarTime(gap.end)}`)
+    .join(' · ')
+
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <div className="flex items-center gap-1 px-1.5 py-1 rounded bg-accent/15 text-accent text-[10px] leading-tight">
+        <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+        <span className="truncate">Занят {first}–{last}</span>
+      </div>
+      <div className="px-1.5 text-[10px] leading-tight text-success truncate">Свободен до {first}</div>
+      {summary.freeWindows.length > 0 && (
+        <div className="px-1.5 text-[10px] leading-tight text-success truncate" title={gapText}>
+          {compact ? 'Окна: ' : 'Свободные окна: '}{gapText}
+        </div>
+      )}
+      <div className="px-1.5 text-[10px] leading-tight text-success truncate">Свободен после {last}</div>
+    </div>
+  )
+}
+
 // ─── Month view ───────────────────────────────────────────────────────────────
 
 const MAX_CHIPS = 4
 
-function MonthView({ current, dayMap, today, onDayClick, onEventClick }) {
+function MonthView({ current, dayMap, today, displayMode, onDayClick, onEventClick }) {
   const year  = current.getFullYear()
   const month = current.getMonth()
   const cells = getMonthCells(year, month)
@@ -179,11 +215,17 @@ function MonthView({ current, dayMap, today, onDayClick, onEventClick }) {
               }`}>
                 {date.getDate()}
               </span>
-              {shown.map(ev => (
-                <EventChip key={ev.id} event={ev} onClick={onEventClick} />
-              ))}
-              {extra > 0 && (
-                <span className="text-[10px] text-subtle pl-1">+{extra}</span>
+              {displayMode === 'busy' ? (
+                <BusyOverview events={events} compact />
+              ) : (
+                <>
+                  {shown.map(ev => (
+                    <EventChip key={ev.id} event={ev} onClick={onEventClick} />
+                  ))}
+                  {extra > 0 && (
+                    <span className="text-[10px] text-subtle pl-1">+{extra}</span>
+                  )}
+                </>
               )}
             </div>
           )
@@ -195,7 +237,7 @@ function MonthView({ current, dayMap, today, onDayClick, onEventClick }) {
 
 // ─── Week view ────────────────────────────────────────────────────────────────
 
-function WeekView({ current, dayMap, today, onDayClick, onEventClick }) {
+function WeekView({ current, dayMap, today, displayMode, onDayClick, onEventClick }) {
   const days = getWeekDays(current)
 
   return (
@@ -235,9 +277,11 @@ function WeekView({ current, dayMap, today, onDayClick, onEventClick }) {
               className={`min-h-[140px] rounded-xl border p-2 flex flex-col gap-1 cursor-pointer transition-colors ${
                 isToday ? 'border-accent/30 bg-accent/5' : 'bg-surface border-border hover:border-muted'
               }`}
-              onClick={() => events.length === 0 && onDayClick(d)}
+              onClick={() => (displayMode === 'busy' || events.length === 0) && onDayClick(d)}
             >
-              {events.length === 0 ? (
+              {displayMode === 'busy' ? (
+                <BusyOverview events={events} />
+              ) : events.length === 0 ? (
                 <span className="text-[10px] text-subtle/30 text-center mt-4 select-none">—</span>
               ) : (
                 events.map(ev => (
@@ -289,7 +333,7 @@ function DayQuickAdd({ dateStr, onAdd }) {
   )
 }
 
-function DayView({ current, dayMap, today, onAddTask, onEventClick }) {
+function DayView({ current, dayMap, today, displayMode, onAddTask, onEventClick }) {
   const ds      = localStr(current)
   const events  = dayMap.get(ds) ?? []
   const dow     = (current.getDay() + 6) % 7   // 0=Mon
@@ -301,6 +345,10 @@ function DayView({ current, dayMap, today, onAddTask, onEventClick }) {
     acc[type] = events.filter(e => e.type === type)
     return acc
   }, {})
+  const busySummary = buildBusySummary(events)
+  const busyHours = Math.floor(busySummary.totalBusyMinutes / 60)
+  const busyMinutes = busySummary.totalBusyMinutes % 60
+  const busyDuration = [busyHours > 0 ? `${busyHours} ч` : '', busyMinutes > 0 ? `${busyMinutes} мин` : ''].filter(Boolean).join(' ')
 
   return (
     <div className="max-w-xl">
@@ -317,8 +365,53 @@ function DayView({ current, dayMap, today, onAddTask, onEventClick }) {
         <span className="ml-auto text-[10px] text-subtle">{events.length} событий</span>
       </div>
 
+      {displayMode === 'busy' && (
+        <div className="bg-surface border border-border rounded-xl overflow-hidden mb-4">
+          {busySummary.ranges.length === 0 ? (
+            <div className="px-4 py-5 text-sm text-success">Свободен весь день</div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+                <div>
+                  <p className="text-sm font-semibold text-text">
+                    Занят {formatCalendarTime(busySummary.firstStart)}–{formatCalendarTime(busySummary.lastEnd)}
+                  </p>
+                  <p className="text-xs text-subtle mt-0.5">Всего занятий: {busyDuration}</p>
+                </div>
+                <span className="text-xs text-success shrink-0">Свободен до {formatCalendarTime(busySummary.firstStart)}</span>
+              </div>
+              <div className="divide-y divide-border">
+                {busySummary.ranges.map((range, i) => (
+                  <div key={`${range.start}-${range.end}`}>
+                    <div className="flex gap-3 px-4 py-3 bg-accent/5">
+                      <span className="text-xs font-semibold text-accent w-[92px] shrink-0">
+                        {formatCalendarTime(range.start)}–{formatCalendarTime(range.end)}
+                      </span>
+                      <span className="text-xs text-text min-w-0 truncate">
+                        {range.events.map(e => e.title.replace(/^📅\s*/, '').replace(/^\d{2}:\d{2}\s*/, '')).join(', ')}
+                      </span>
+                    </div>
+                    {i < busySummary.freeWindows.length && (
+                      <div className="flex gap-3 px-4 py-2 text-success bg-success/5">
+                        <span className="text-xs font-semibold w-[92px] shrink-0">
+                          {formatCalendarTime(busySummary.freeWindows[i].start)}–{formatCalendarTime(busySummary.freeWindows[i].end)}
+                        </span>
+                        <span className="text-xs">Свободен</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-3 border-t border-border text-xs text-success">
+                Свободен после {formatCalendarTime(busySummary.lastEnd)}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Empty state */}
-      {events.length === 0 && (
+      {displayMode === 'events' && events.length === 0 && (
         <div className="flex flex-col items-center gap-2 py-10 text-center opacity-50">
           <span className="text-3xl">▦</span>
           <p className="text-subtle text-sm">Нет событий в этот день</p>
@@ -326,7 +419,7 @@ function DayView({ current, dayMap, today, onAddTask, onEventClick }) {
       )}
 
       {/* Events grouped by type */}
-      {TYPE_ORDER.map(type => {
+      {displayMode === 'events' && TYPE_ORDER.map(type => {
         const evs = grouped[type]
         if (!evs || evs.length === 0) return null
         const layerColor = TYPE_COLOR[type]
@@ -379,7 +472,7 @@ function DayView({ current, dayMap, today, onAddTask, onEventClick }) {
 
 // ─── Navigation header ────────────────────────────────────────────────────────
 
-function NavHeader({ view, setView, current, navigate, goToday, layers, setLayers }) {
+function NavHeader({ view, setView, displayMode, setDisplayMode, current, navigate, goToday, layers, setLayers }) {
   const y   = current.getFullYear()
   const m   = current.getMonth()
 
@@ -413,6 +506,21 @@ function NavHeader({ view, setView, current, navigate, goToday, layers, setLayer
               onClick={() => setView(v)}
               className={`px-3 py-1.5 text-xs font-medium transition-colors border-r border-border last:border-r-0 ${
                 view === v ? 'bg-accent/20 text-accent' : 'text-subtle hover:text-text'
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex rounded-lg overflow-hidden border border-border" title="Что показывать в ячейках календаря">
+          {[{ v: 'events', l: 'События' }, { v: 'busy', l: 'Занятость' }].map(({ v, l }) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setDisplayMode(v)}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors border-r border-border last:border-r-0 ${
+                displayMode === v ? 'bg-accent/20 text-accent' : 'text-subtle hover:text-text'
               }`}
             >
               {l}
@@ -975,6 +1083,7 @@ export default function CalendarModule() {
   // ── ui state ──
   const [tab,     setTab]     = useState('calendar') // 'calendar' | 'meetings' | 'booking'
   const [view,    setView]    = useState('month')
+  const [displayMode, setDisplayMode] = useState('busy')
   const [current, setCurrent] = useState(() => new Date())
   const [layers,  setLayers]  = useState({ tasks: true, habits: true, workouts: true, nutrition: true, sleep: true, finance: true, meetings: true })
 
@@ -1024,6 +1133,15 @@ export default function CalendarModule() {
     const t = setTimeout(() => setToast(null), 3000)
     return () => clearTimeout(t)
   }, [toast])
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('personalos-calendar-display-mode')
+    if (saved === 'events' || saved === 'busy') setDisplayMode(saved)
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem('personalos-calendar-display-mode', displayMode)
+  }, [displayMode])
 
   const showToast = (msg) => setToast(msg)
 
@@ -1137,6 +1255,7 @@ export default function CalendarModule() {
           {/* Nav header: view toggle + date nav + layer filters */}
           <NavHeader
             view={view}       setView={setView}
+            displayMode={displayMode} setDisplayMode={setDisplayMode}
             current={current}
             navigate={navigate}
             goToday={goToday}
@@ -1149,6 +1268,7 @@ export default function CalendarModule() {
               current={current}
               dayMap={dayMap}
               today={today}
+              displayMode={displayMode}
               onDayClick={goToDay}
               onEventClick={handleEventClick}
             />
@@ -1158,6 +1278,7 @@ export default function CalendarModule() {
               current={current}
               dayMap={dayMap}
               today={today}
+              displayMode={displayMode}
               onDayClick={goToDay}
               onEventClick={handleEventClick}
             />
@@ -1167,6 +1288,7 @@ export default function CalendarModule() {
               current={current}
               dayMap={dayMap}
               today={today}
+              displayMode={displayMode}
               onAddTask={addTask}
               onEventClick={handleEventClick}
             />

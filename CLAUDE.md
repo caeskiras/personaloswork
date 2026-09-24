@@ -104,7 +104,7 @@
 - Node: >=20 (зафиксировано в .nvmrc и engines в package.json).
 - Анонимный Supabase-клиент (lib/supabase.js) инициализировать лениво. Для Railway public env прокидываются в браузер через runtime endpoint `/api/public-env`, потому что NEXT_PUBLIC_* могут отсутствовать на build-time. Runtime env всё равно обязательны для работы приложения. `NEXT_PUBLIC_APP_URL` используется для auth redirect (`/auth/reset`), чтобы письма Supabase не уезжали на старый/непривязанный домен.
 - supabaseAdmin инициализировать лениво, чтобы билд не падал без env.
-- Автономный локальный режим: `NEXT_PUBLIC_LOCAL_MODE=true` + `NEXT_PUBLIC_DEV_BYPASS_AUTH=true`. CRUD проходит через `/api/local-db` (GET — health-check, POST — операции; без local-mode endpoint отвечает 404), данные атомарно сохраняются в `%LOCALAPPDATA%/PersonalOS/data/personalos-data.json`, предыдущее состояние — в `personalos-data.backup.json`. Браузерная очистка данные не удаляет.
+- Автономный локальный режим: `NEXT_PUBLIC_LOCAL_MODE=true` + `NEXT_PUBLIC_DEV_BYPASS_AUTH=true`. CRUD проходит через `/api/local-db` (GET — health-check, POST — операции; без local-mode endpoint отвечает 404), данные атомарно сохраняются в `%LOCALAPPDATA%/PersonalOS/data/personalos-data.json`, предыдущее состояние — в `personalos-data.backup.json`. Браузерная очистка данные не удаляет. Ярлык `PersonalOS (локально)` запускает `%LOCALAPPDATA%/PersonalOS/Start-PersonalOS.ps1`, передаёт закреплённый путь проекта отдельным Unicode-параметром, пишет диагностику в `runtime/launcher.log`, ждёт готовности сервера и сам открывает системный браузер.
 
 ## Мобильные соглашения (< md = < 768px)
 - Сетка модулей (/modules): `grid-cols-2` на мобиле (не `grid-cols-1`). Десктоп: lg:3, xl:4.

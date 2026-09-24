@@ -13,6 +13,7 @@
 - AUTH_ENABLED = true (lib/config.js). Вход: email+пароль + восстановление пароля (/auth, /auth/forgot, /auth/reset). Google OAuth НЕ подключён (точка расширения оставлена).
 - getUserId() возвращает auth.uid() текущей сессии. Приложение закрыто за входом (AuthProvider + редирект на /auth).
 - lib/store.js (useOS) — userId/userName из сессии Supabase.
+- Локальный автономный режим включается `NEXT_PUBLIC_LOCAL_MODE=true`: авторизация обходится локальной сессией, сетевые вызовы Supabase не выполняются.
 
 ## RLS — ВАЖНО
 - RLS ВКЛЮЧЁН на всех таблицах с данными пользователя. Любая НОВАЯ таблица обязана иметь:
@@ -103,6 +104,7 @@
 - Node: >=20 (зафиксировано в .nvmrc и engines в package.json).
 - Анонимный Supabase-клиент (lib/supabase.js) инициализировать лениво. Для Railway public env прокидываются в браузер через runtime endpoint `/api/public-env`, потому что NEXT_PUBLIC_* могут отсутствовать на build-time. Runtime env всё равно обязательны для работы приложения. `NEXT_PUBLIC_APP_URL` используется для auth redirect (`/auth/reset`), чтобы письма Supabase не уезжали на старый/непривязанный домен.
 - supabaseAdmin инициализировать лениво, чтобы билд не падал без env.
+- Автономный локальный режим: `NEXT_PUBLIC_LOCAL_MODE=true` + `NEXT_PUBLIC_DEV_BYPASS_AUTH=true`. CRUD проходит через `/api/local-db` (GET — health-check, POST — операции; без local-mode endpoint отвечает 404), данные атомарно сохраняются в `%LOCALAPPDATA%/PersonalOS/data/personalos-data.json`, предыдущее состояние — в `personalos-data.backup.json`. Браузерная очистка данные не удаляет.
 
 ## Мобильные соглашения (< md = < 768px)
 - Сетка модулей (/modules): `grid-cols-2` на мобиле (не `grid-cols-1`). Десктоп: lg:3, xl:4.
